@@ -72,21 +72,53 @@ def _migrate_config(data: dict) -> dict:
     return data
 
 
-def convert_keys(data: Any) -> Any:
+def _is_mcp_servers_path(path: tuple[str, ...]) -> bool:
+    """Whether path points at tools.mcp_servers."""
+    return len(path) == 2 and path[0] == "tools" and path[1] == "mcp_servers"
+
+
+def _is_mcp_env_map_path(path: tuple[str, ...]) -> bool:
+    """Whether path points at tools.mcp_servers.<name>.env."""
+    return len(path) == 4 and path[0] == "tools" and path[1] == "mcp_servers" and path[3] == "env"
+
+
+def convert_keys(data: Any, path: tuple[str, ...] = ()) -> Any:
     """Convert camelCase keys to snake_case for Pydantic."""
     if isinstance(data, dict):
-        return {camel_to_snake(k): convert_keys(v) for k, v in data.items()}
+        out: dict[str, Any] = {}
+        for k, v in data.items():
+            key = camel_to_snake(k)
+            next_path = path + (key,)
+
+            # Keep env var names exactly under tools.mcpServers.<name>.env
+            if _is_mcp_env_map_path(path):
+                out[k] = convert_keys(v, path + (k,))
+                continue
+
+            out[key] = convert_keys(v, next_path)
+        return out
     if isinstance(data, list):
-        return [convert_keys(item) for item in data]
+        return [convert_keys(item, path) for item in data]
     return data
 
 
-def convert_to_camel(data: Any) -> Any:
+def convert_to_camel(data: Any, path: tuple[str, ...] = ()) -> Any:
     """Convert snake_case keys to camelCase."""
     if isinstance(data, dict):
-        return {snake_to_camel(k): convert_to_camel(v) for k, v in data.items()}
+        out: dict[str, Any] = {}
+        for k, v in data.items():
+            key = snake_to_camel(k)
+            next_path = path + (k,)
+
+            # Keep env var names exactly under tools.mcpServers.<name>.env
+            if _is_mcp_env_map_path(path):
+                out[k] = convert_to_camel(v, path + (k,))
+                continue
+
+            out[key] = convert_to_camel(v, next_path)
+        return out
     if isinstance(data, list):
-        return [convert_to_camel(item) for item in data]
+        return [convert_to_camel(item, path) for item in data]
     return data
 
 

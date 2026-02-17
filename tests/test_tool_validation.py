@@ -2,6 +2,7 @@ from typing import Any
 
 from nanobot.agent.tools.base import Tool
 from nanobot.agent.tools.registry import ToolRegistry
+from nanobot.config.loader import convert_keys, convert_to_camel
 
 
 class SampleTool(Tool):
@@ -86,3 +87,71 @@ async def test_registry_returns_validation_error() -> None:
     reg.register(SampleTool())
     result = await reg.execute("sample", {"query": "hi"})
     assert "Invalid parameters" in result
+
+
+def _build_mcp_env_data() -> dict[str, Any]:
+    return {
+        "tools": {
+            "mcpServers": {
+                "demo": {
+                    "command": "npx",
+                    "env": {
+                        "OPENAI_API_KEY": "test_key",
+                        "MyCustomToken": "abc",
+                    },
+                }
+            }
+        }
+    }
+
+
+def test_convert_keys_preserves_mcp_env_var_names() -> None:
+    data = _build_mcp_env_data()
+
+    converted = convert_keys(data)
+    env = converted["tools"]["mcp_servers"]["demo"]["env"]
+
+    assert env["OPENAI_API_KEY"] == "test_key"
+    assert env["MyCustomToken"] == "abc"
+
+
+def test_convert_to_camel_preserves_mcp_env_var_names() -> None:
+    data = {
+        "tools": {
+            "mcp_servers": {
+                "demo": {
+                    "command": "npx",
+                    "env": {
+                        "OPENAI_API_KEY": "test_key",
+                        "MyCustomToken": "abc",
+                    },
+                }
+            }
+        }
+    }
+
+    converted = convert_to_camel(data)
+    env = converted["tools"]["mcpServers"]["demo"]["env"]
+
+    assert env["OPENAI_API_KEY"] == "test_key"
+    assert env["MyCustomToken"] == "abc"
+
+
+def test_convert_keys_still_converts_non_env_keys() -> None:
+    data = {
+        "tools": {
+            "restrictToWorkspace": True,
+            "mcpServers": {
+                "demo": {
+                    "extraHeaders": {"XCustom": "v"},
+                }
+            },
+        }
+    }
+
+    converted = convert_keys(data)
+    tools = converted["tools"]
+
+    assert "restrict_to_workspace" in tools
+    assert "mcp_servers" in tools
+    assert "extra_headers" in tools["mcp_servers"]["demo"]
