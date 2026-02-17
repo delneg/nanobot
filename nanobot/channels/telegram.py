@@ -148,11 +148,11 @@ class TelegramChannel(BaseChannel):
         self._app.add_handler(CommandHandler("new", self._forward_command))
         self._app.add_handler(CommandHandler("help", self._forward_command))
         
-        # Add message handler for text, photos, voice, documents
+        # Add message handler for text, photos, voice, video, documents
         self._app.add_handler(
             MessageHandler(
-                (filters.TEXT | filters.PHOTO | filters.VOICE | filters.AUDIO | filters.Document.ALL) 
-                & ~filters.COMMAND, 
+                (filters.TEXT | filters.PHOTO | filters.VOICE | filters.AUDIO | filters.VIDEO | filters.Document.ALL)
+                & ~filters.COMMAND,
                 self._on_message
             )
         )
@@ -312,6 +312,9 @@ class TelegramChannel(BaseChannel):
         if message.photo:
             media_file = message.photo[-1]  # Largest photo
             media_type = "image"
+        elif message.video:
+            media_file = message.video
+            media_type = "video"
         elif message.voice:
             media_file = message.voice
             media_type = "voice"
@@ -413,9 +416,10 @@ class TelegramChannel(BaseChannel):
             ext_map = {
                 "image/jpeg": ".jpg", "image/png": ".png", "image/gif": ".gif",
                 "audio/ogg": ".ogg", "audio/mpeg": ".mp3", "audio/mp4": ".m4a",
+                "video/mp4": ".mp4", "video/webm": ".webm", "video/quicktime": ".mov",
             }
             if mime_type in ext_map:
                 return ext_map[mime_type]
-        
-        type_map = {"image": ".jpg", "voice": ".ogg", "audio": ".mp3", "file": ""}
+
+        type_map = {"image": ".jpg", "voice": ".ogg", "audio": ".mp3", "video": ".mp4", "file": ""}
         return type_map.get(media_type, "")
