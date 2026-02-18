@@ -2,7 +2,6 @@
 
 import json
 from pathlib import Path
-from typing import Any
 
 from nanobot.config.schema import Config
 
@@ -21,43 +20,41 @@ def get_data_dir() -> Path:
 def load_config(config_path: Path | None = None) -> Config:
     """
     Load configuration from file or create default.
-    
+
     Args:
         config_path: Optional path to config file. Uses default if not provided.
-    
+
     Returns:
         Loaded configuration object.
     """
     path = config_path or get_config_path()
-    
+
     if path.exists():
         try:
             with open(path) as f:
                 data = json.load(f)
             data = _migrate_config(data)
-            return Config.model_validate(convert_keys(data))
+            return Config.model_validate(data)
         except (json.JSONDecodeError, ValueError) as e:
             print(f"Warning: Failed to load config from {path}: {e}")
             print("Using default configuration.")
-    
+
     return Config()
 
 
 def save_config(config: Config, config_path: Path | None = None) -> None:
     """
     Save configuration to file.
-    
+
     Args:
         config: Configuration to save.
         config_path: Optional path to save to. Uses default if not provided.
     """
     path = config_path or get_config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    
-    # Convert to camelCase format
-    data = config.model_dump()
-    data = convert_to_camel(data)
-    
+
+    data = config.model_dump(by_alias=True)
+
     with open(path, "w") as f:
         json.dump(data, f, indent=2)
 
@@ -70,69 +67,3 @@ def _migrate_config(data: dict) -> dict:
     if "restrictToWorkspace" in exec_cfg and "restrictToWorkspace" not in tools:
         tools["restrictToWorkspace"] = exec_cfg.pop("restrictToWorkspace")
     return data
-
-
-def _is_mcp_servers_path(path: tuple[str, ...]) -> bool:
-    """Whether path points at tools.mcp_servers."""
-    return len(path) == 2 and path[0] == "tools" and path[1] == "mcp_servers"
-
-
-def _is_mcp_env_map_path(path: tuple[str, ...]) -> bool:
-    """Whether path points at tools.mcp_servers.<name>.env."""
-    return len(path) == 4 and path[0] == "tools" and path[1] == "mcp_servers" and path[3] == "env"
-
-
-def convert_keys(data: Any, path: tuple[str, ...] = ()) -> Any:
-    """Convert camelCase keys to snake_case for Pydantic."""
-    if isinstance(data, dict):
-        out: dict[str, Any] = {}
-        for k, v in data.items():
-            key = camel_to_snake(k)
-            next_path = path + (key,)
-
-            # Keep env var names exactly under tools.mcpServers.<name>.env
-            if _is_mcp_env_map_path(path):
-                out[k] = convert_keys(v, path + (k,))
-                continue
-
-            out[key] = convert_keys(v, next_path)
-        return out
-    if isinstance(data, list):
-        return [convert_keys(item, path) for item in data]
-    return data
-
-
-def convert_to_camel(data: Any, path: tuple[str, ...] = ()) -> Any:
-    """Convert snake_case keys to camelCase."""
-    if isinstance(data, dict):
-        out: dict[str, Any] = {}
-        for k, v in data.items():
-            key = snake_to_camel(k)
-            next_path = path + (k,)
-
-            # Keep env var names exactly under tools.mcpServers.<name>.env
-            if _is_mcp_env_map_path(path):
-                out[k] = convert_to_camel(v, path + (k,))
-                continue
-
-            out[key] = convert_to_camel(v, next_path)
-        return out
-    if isinstance(data, list):
-        return [convert_to_camel(item, path) for item in data]
-    return data
-
-
-def camel_to_snake(name: str) -> str:
-    """Convert camelCase to snake_case."""
-    result = []
-    for i, char in enumerate(name):
-        if char.isupper() and i > 0:
-            result.append("_")
-        result.append(char.lower())
-    return "".join(result)
-
-
-def snake_to_camel(name: str) -> str:
-    """Convert snake_case to camelCase."""
-    components = name.split("_")
-    return components[0] + "".join(x.title() for x in components[1:])
