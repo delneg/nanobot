@@ -169,7 +169,6 @@ class AgentLoop:
         self,
         initial_messages: list[dict],
         on_progress: Callable[[str], Awaitable[None]] | None = None,
-        has_media: bool = False,
     ) -> tuple[str | None, list[str]]:
         """
         Run the agent iteration loop.
@@ -185,7 +184,6 @@ class AgentLoop:
         iteration = 0
         final_content = None
         tools_used: list[str] = []
-        text_only_retried = False
 
         while iteration < self.max_iterations:
             iteration += 1
@@ -231,17 +229,6 @@ class AgentLoop:
                     )
             else:
                 final_content = self._strip_think(response.content)
-                # Some models send an interim text response before tool calls.
-                # Give them one retry; don't forward the text to avoid duplicates.
-                if not tools_used and not text_only_retried and final_content and not has_media:
-                    text_only_retried = True
-                    logger.debug("Interim text response (no tools used yet), retrying: {}", final_content[:80])
-                    messages = self.context.add_assistant_message(
-                        messages, response.content,
-                        reasoning_content=response.reasoning_content,
-                    )
-                    final_content = None
-                    continue
                 break
 
         return final_content, tools_used
@@ -362,7 +349,6 @@ class AgentLoop:
 
         final_content, tools_used = await self._run_agent_loop(
             initial_messages, on_progress=on_progress or _bus_progress,
-            has_media=bool(msg.media),
         )
 
         if final_content is None:
