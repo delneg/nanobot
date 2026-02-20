@@ -161,23 +161,28 @@ To recall past events, grep {workspace_path}/memory/HISTORY.md"""
 
         return messages
 
+    _MEDIA_PREFIXES = ("image/", "video/")
+    _MAX_VIDEO_BYTES = 50 * 1024 * 1024  # 50 MB
+
     def _build_user_content(self, text: str, media: list[str] | None) -> str | list[dict[str, Any]]:
-        """Build user message content with optional base64-encoded images."""
+        """Build user message content with optional base64-encoded images/videos."""
         if not media:
             return text
-        
-        images = []
+
+        parts: list[dict[str, Any]] = []
         for path in media:
             p = Path(path)
             mime, _ = mimetypes.guess_type(path)
-            if not p.is_file() or not mime or not mime.startswith("image/"):
+            if not p.is_file() or not mime or not any(mime.startswith(pfx) for pfx in self._MEDIA_PREFIXES):
+                continue
+            if mime.startswith("video/") and p.stat().st_size > self._MAX_VIDEO_BYTES:
                 continue
             b64 = base64.b64encode(p.read_bytes()).decode()
-            images.append({"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}})
-        
-        if not images:
+            parts.append({"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}})
+
+        if not parts:
             return text
-        return images + [{"type": "text", "text": text}]
+        return parts + [{"type": "text", "text": text}]
     
     def add_tool_result(
         self,
