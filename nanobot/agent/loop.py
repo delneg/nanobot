@@ -217,6 +217,7 @@ class AgentLoop:
                 messages = self.context.add_assistant_message(
                     messages, response.content, tool_call_dicts,
                     reasoning_content=response.reasoning_content,
+                    reasoning_details=response.reasoning_details,
                 )
 
                 for tool_call in response.tool_calls:
@@ -230,7 +231,9 @@ class AgentLoop:
             else:
                 clean = self._strip_think(response.content)
                 messages = self.context.add_assistant_message(
-                    messages, clean, reasoning_content=response.reasoning_content,
+                    messages, clean,
+                    reasoning_content=response.reasoning_content,
+                    reasoning_details=response.reasoning_details,
                 )
                 final_content = clean
                 break
@@ -462,7 +465,7 @@ class AgentLoop:
         """Save new-turn messages into session, truncating large tool results."""
         from datetime import datetime
         for m in messages[skip:]:
-            entry = {k: v for k, v in m.items() if k != "reasoning_content"}
+            entry = {k: v for k, v in m.items() if k not in ("reasoning_content", "reasoning_details")}
             if entry.get("role") == "tool" and isinstance(entry.get("content"), str):
                 content = entry["content"]
                 if len(content) > self._TOOL_RESULT_MAX_CHARS:
