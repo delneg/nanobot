@@ -381,8 +381,22 @@ class TelegramChannel(BaseChannel):
                 media_dir.mkdir(parents=True, exist_ok=True)
                 
                 file_path = media_dir / f"{media_file.file_id[:16]}{ext}"
-                await file.download_to_drive(str(file_path))
-                
+
+                if self.config.local_mode and hasattr(file, 'file_path') and file.file_path:
+                    import shutil
+                    import os
+
+                    local_api_path = file.file_path
+
+                    if os.path.exists(local_api_path):
+                        shutil.copy2(local_api_path, str(file_path))
+                        logger.debug("Copied local file from {} to {}", local_api_path, file_path)
+                    else:
+                        logger.error("Local file {} not found. Ensure Telegram API and Nanobot share the same volume.", local_api_path)
+                        await file.download_to_drive(str(file_path))
+                else:
+                    await file.download_to_drive(str(file_path))
+
                 media_paths.append(str(file_path))
                 
                 # Handle voice transcription
