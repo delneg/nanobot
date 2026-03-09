@@ -478,9 +478,10 @@ class AgentLoop:
                     for c in content:
                         if c.get("type") == "text" and isinstance(c.get("text"), str) and c["text"].startswith(ContextBuilder._RUNTIME_CONTEXT_TAG):
                             continue  # Strip runtime context from multimodal messages
-                        if (c.get("type") == "image_url"
-                                and c.get("image_url", {}).get("url", "").startswith("data:image/")):
-                            filtered.append({"type": "text", "text": "[image]"})
+                        if c.get("type") == "image_url" and c.get("image_url", {}).get("url", "").startswith("data:"):
+                            url = c["image_url"]["url"]
+                            tag = "[video]" if url.startswith("data:video/") else "[image]"
+                            filtered.append({"type": "text", "text": tag})
                         else:
                             filtered.append(c)
                     if not filtered:
