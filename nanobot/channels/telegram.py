@@ -222,8 +222,6 @@ class TelegramChannel(BaseChannel):
             builder = builder.base_file_url(self.config.base_file_url)
         if self.config.local_mode:
             builder = builder.local_mode(True)
-        if self.config.proxy:
-            builder = builder.proxy(self.config.proxy).get_updates_proxy(self.config.proxy)
         self._app = builder.build()
         self._app.add_error_handler(self._on_error)
 
