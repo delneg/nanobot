@@ -159,6 +159,9 @@ class TelegramConfig(Base):
     proxy: str | None = None
     reply_to_message: bool = False
     group_policy: Literal["open", "mention"] = "mention"
+    base_url: str | None = None  # Custom Bot API server URL, e.g. "http://localhost:8081/bot"
+    base_file_url: str | None = None  # Custom file download URL, e.g. "http://localhost:8081/file/bot"
+    local_mode: bool = False  # Enable local Bot API server mode (uses local file paths instead of downloading)
 
 
 class TelegramChannel(BaseChannel):
