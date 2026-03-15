@@ -10,7 +10,7 @@ from typing import Any
 
 from nanobot.agent.memory import MemoryStore
 from nanobot.agent.skills import SkillsLoader
-from nanobot.utils.helpers import detect_image_mime
+from nanobot.utils.helpers import build_assistant_message, detect_image_mime
 
 
 class ContextBuilder:
@@ -173,7 +173,7 @@ Reply directly with text for conversations. Only use the 'message' tool to send 
         if not parts:
             return text
         return parts + [{"type": "text", "text": text}]
-    
+
     def add_tool_result(
         self, messages: list[dict[str, Any]],
         tool_call_id: str, tool_name: str, result: str,
@@ -191,6 +191,17 @@ Reply directly with text for conversations. Only use the 'message' tool to send 
         thinking_blocks: list[dict] | None = None,
     ) -> list[dict[str, Any]]:
         """Add an assistant message to the message list."""
+        #TODO: fix this
+
+        # messages.append(build_assistant_message(
+        #     content,
+        #     tool_calls=tool_calls,
+        #     reasoning_content=reasoning_content,
+        #     thinking_blocks=thinking_blocks,
+        # ))
+        # return messages
+
+
         msg: dict[str, Any] = {"role": "assistant", "content": content}
         if tool_calls:
             msg["tool_calls"] = tool_calls
