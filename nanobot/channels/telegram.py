@@ -545,7 +545,18 @@ class TelegramChannel(BaseChannel):
             media_dir = get_media_dir("telegram")
             unique_id = getattr(media_file, "file_unique_id", media_file.file_id)
             file_path = media_dir / f"{unique_id}{ext}"
-            await file.download_to_drive(str(file_path))
+            if self.config.local_mode and hasattr(file, 'file_path') and file.file_path:
+                import shutil
+                import os
+                local_api_path = file.file_path
+                if os.path.exists(local_api_path):
+                    shutil.copy2(local_api_path, str(file_path))
+                    logger.debug("Copied local file from {} to {}", local_api_path, file_path)
+                else:
+                    logger.error("Local file {} not found. Ensure Telegram API and Nanobot share the same volume.", local_api_path)
+                    await file.download_to_drive(str(file_path))
+            else:
+                await file.download_to_drive(str(file_path))
             path_str = str(file_path)
             if media_type in ("voice", "audio"):
                 transcription = await self.transcribe_audio(file_path)
@@ -677,67 +688,14 @@ class TelegramChannel(BaseChannel):
             content_parts.append(message.caption)
 
 
-
-        # TODO: fix this
-        # # Download current message media
-        # current_media_paths, current_media_parts = await self._download_message_media(
-        #     message, add_failure_content=True
-        # )
-        # media_paths.extend(current_media_paths)
-        # content_parts.extend(current_media_parts)
-        # if current_media_paths:
-        #     logger.debug("Downloaded message media to {}", current_media_paths[0])
-
-
-        # Handle media files
-        media_file = None
-        media_type = None
-
-        if message.photo:
-            media_file = message.photo[-1]  # Largest photo
-            media_type = "image"
-        elif message.video:
-            media_file = message.video
-            media_type = "video"
-        elif message.voice:
-            media_file = message.voice
-            media_type = "voice"
-        elif message.audio:
-            media_file = message.audio
-            media_type = "audio"
-        elif message.document:
-            media_file = message.document
-            media_type = "file"
-
-        # Download media if present
-        if media_file and self._app:
-            try:
-                file = await self._app.bot.get_file(media_file.file_id)
-                ext = self._get_extension(
-                    media_type,
-                    getattr(media_file, 'mime_type', None),
-                    getattr(media_file, 'file_name', None),
-                )
-                media_dir = get_media_dir("telegram")
-
-                file_path = media_dir / f"{media_file.file_id[:16]}{ext}"
-
-                if self.config.local_mode and hasattr(file, 'file_path') and file.file_path:
-                    import shutil
-                    import os
-
-                    local_api_path = file.file_path
-
-                    if os.path.exists(local_api_path):
-                        shutil.copy2(local_api_path, str(file_path))
-                        logger.debug("Copied local file from {} to {}", local_api_path, file_path)
-                    else:
-                        logger.error("Local file {} not found. Ensure Telegram API and Nanobot share the same volume.", local_api_path)
-                        await file.download_to_drive(str(file_path))
-                else:
-                    await file.download_to_drive(str(file_path))
-
-                media_paths.append(str(file_path))
+        # Download current message media
+        current_media_paths, current_media_parts = await self._download_message_media(
+            message, add_failure_content=True
+        )
+        media_paths.extend(current_media_paths)
+        content_parts.extend(current_media_parts)
+        if current_media_paths:
+            logger.debug("Downloaded message media to {}", current_media_paths[0])
 
         # Reply context: text and/or media from the replied-to message
         reply = getattr(message, "reply_to_message", None)

@@ -663,3 +663,127 @@ async def test_on_help_includes_restart_command() -> None:
     update.message.reply_text.assert_awaited_once()
     help_text = update.message.reply_text.await_args.args[0]
     assert "/restart" in help_text
+
+
+@pytest.mark.asyncio
+async def test_download_message_media_local_mode_copies_file(
+    monkeypatch, tmp_path
+) -> None:
+    """In local_mode, _download_message_media copies from local path instead of downloading."""
+    media_dir = tmp_path / "media" / "telegram"
+    media_dir.mkdir(parents=True)
+    monkeypatch.setattr(
+        "nanobot.channels.telegram.get_media_dir",
+        lambda channel=None: media_dir if channel else tmp_path / "media",
+    )
+
+    # Create a source file that the local API server would provide
+    local_src = tmp_path / "local_api_file.jpg"
+    local_src.write_bytes(b"\xff\xd8fake-jpeg-data")
+
+    channel = TelegramChannel(
+        TelegramConfig(enabled=True, token="123:abc", allow_from=["*"], local_mode=True),
+        MessageBus(),
+    )
+    download_mock = AsyncMock(return_value=None)
+    channel._app = _FakeApp(lambda: None)
+    channel._app.bot.get_file = AsyncMock(
+        return_value=SimpleNamespace(
+            file_path=str(local_src),
+            download_to_drive=download_mock,
+        )
+    )
+
+    msg = SimpleNamespace(
+        photo=[SimpleNamespace(file_id="fid_local", file_unique_id="uid_local", mime_type="image/jpeg", file_name=None)],
+        voice=None, audio=None, document=None, video=None, video_note=None, animation=None,
+    )
+    paths, parts = await channel._download_message_media(msg)
+
+    assert len(paths) == 1
+    assert "uid_local" in paths[0]
+    # File was copied, not downloaded
+    download_mock.assert_not_awaited()
+    # Destination file should exist with same content
+    assert Path(paths[0]).read_bytes() == b"\xff\xd8fake-jpeg-data"
+
+
+@pytest.mark.asyncio
+async def test_download_message_media_local_mode_falls_back_on_missing_file(
+    monkeypatch, tmp_path
+) -> None:
+    """In local_mode, falls back to download_to_drive when local file doesn't exist."""
+    media_dir = tmp_path / "media" / "telegram"
+    media_dir.mkdir(parents=True)
+    monkeypatch.setattr(
+        "nanobot.channels.telegram.get_media_dir",
+        lambda channel=None: media_dir if channel else tmp_path / "media",
+    )
+
+    channel = TelegramChannel(
+        TelegramConfig(enabled=True, token="123:abc", allow_from=["*"], local_mode=True),
+        MessageBus(),
+    )
+    download_mock = AsyncMock(return_value=None)
+    channel._app = _FakeApp(lambda: None)
+    channel._app.bot.get_file = AsyncMock(
+        return_value=SimpleNamespace(
+            file_path="/nonexistent/path.jpg",
+            download_to_drive=download_mock,
+        )
+    )
+
+    msg = SimpleNamespace(
+        photo=[SimpleNamespace(file_id="fid_fb", file_unique_id="uid_fb", mime_type="image/jpeg", file_name=None)],
+        voice=None, audio=None, document=None, video=None, video_note=None, animation=None,
+    )
+    paths, parts = await channel._download_message_media(msg)
+
+    # Should have fallen back to download
+    download_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_download_message_media_video(
+    monkeypatch, tmp_path
+) -> None:
+    """_download_message_media handles video messages."""
+    media_dir = tmp_path / "media" / "telegram"
+    media_dir.mkdir(parents=True)
+    monkeypatch.setattr(
+        "nanobot.channels.telegram.get_media_dir",
+        lambda channel=None: media_dir if channel else tmp_path / "media",
+    )
+
+    channel = TelegramChannel(
+        TelegramConfig(enabled=True, token="123:abc", allow_from=["*"]),
+        MessageBus(),
+    )
+    channel._app = _FakeApp(lambda: None)
+    channel._app.bot.get_file = AsyncMock(
+        return_value=SimpleNamespace(download_to_drive=AsyncMock(return_value=None))
+    )
+
+    msg = SimpleNamespace(
+        photo=None,
+        voice=None, audio=None, document=None,
+        video=SimpleNamespace(file_id="vid123", file_unique_id="vid_u123", mime_type="video/mp4", file_name=None),
+        video_note=None, animation=None,
+    )
+    paths, parts = await channel._download_message_media(msg)
+    assert len(paths) == 1
+    assert paths[0].endswith(".mp4")
+    assert "[video:" in parts[0]
+
+
+def test_get_extension_video_types() -> None:
+    """_get_extension returns correct extensions for video types."""
+    channel = TelegramChannel(
+        TelegramConfig(enabled=True, token="123:abc", allow_from=["*"]),
+        MessageBus(),
+    )
+    assert channel._get_extension("video", "video/mp4", None) == ".mp4"
+    assert channel._get_extension("video", "video/webm", None) == ".webm"
+    assert channel._get_extension("video", "video/quicktime", None) == ".mov"
+    # Fallback when no mime
+    assert channel._get_extension("video", None, None) == ".mp4"

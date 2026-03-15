@@ -191,25 +191,11 @@ Reply directly with text for conversations. Only use the 'message' tool to send 
         thinking_blocks: list[dict] | None = None,
     ) -> list[dict[str, Any]]:
         """Add an assistant message to the message list."""
-        #TODO: fix this
-
-        # messages.append(build_assistant_message(
-        #     content,
-        #     tool_calls=tool_calls,
-        #     reasoning_content=reasoning_content,
-        #     thinking_blocks=thinking_blocks,
-        # ))
-        # return messages
-
-
-        msg: dict[str, Any] = {"role": "assistant", "content": content}
-        if tool_calls:
-            msg["tool_calls"] = tool_calls
-        if reasoning_content is not None:
-            msg["reasoning_content"] = reasoning_content
-        if reasoning_details is not None:
-            msg["reasoning_details"] = reasoning_details
-        if thinking_blocks:
-            msg["thinking_blocks"] = thinking_blocks
-        messages.append(msg)
+        messages.append(build_assistant_message(
+            content,
+            tool_calls=tool_calls,
+            reasoning_content=reasoning_content,
+            reasoning_details=reasoning_details,
+            thinking_blocks=thinking_blocks,
+        ))
         return messages
