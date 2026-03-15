@@ -6,6 +6,7 @@ import asyncio
 import re
 import time
 import unicodedata
+from pathlib import Path
 from typing import Any, Literal
 
 from loguru import logger
@@ -547,10 +548,9 @@ class TelegramChannel(BaseChannel):
             file_path = media_dir / f"{unique_id}{ext}"
             if self.config.local_mode and hasattr(file, 'file_path') and file.file_path:
                 import shutil
-                import os
-                local_api_path = file.file_path
-                if os.path.exists(local_api_path):
-                    shutil.copy2(local_api_path, str(file_path))
+                local_api_path = Path(file.file_path)
+                if local_api_path.exists():
+                    shutil.copy2(str(local_api_path), str(file_path))
                     logger.debug("Copied local file from {} to {}", local_api_path, file_path)
                 else:
                     logger.error("Local file {} not found. Ensure Telegram API and Nanobot share the same volume.", local_api_path)
@@ -687,7 +687,6 @@ class TelegramChannel(BaseChannel):
         if message.caption:
             content_parts.append(message.caption)
 
-
         # Download current message media
         current_media_paths, current_media_parts = await self._download_message_media(
             message, add_failure_content=True
@@ -812,8 +811,6 @@ class TelegramChannel(BaseChannel):
             return ext
 
         if filename:
-            from pathlib import Path
-
             return "".join(Path(filename).suffixes)
 
         return ""

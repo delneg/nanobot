@@ -97,6 +97,15 @@ class _FakeBuilder:
     def get_updates_proxy(self, _proxy):
         raise AssertionError("builder.get_updates_proxy should not be called when request is set")
 
+    def base_url(self, _url):
+        return self
+
+    def base_file_url(self, _url):
+        return self
+
+    def local_mode(self, _flag):
+        return self
+
     def build(self):
         return self.app
 
@@ -123,6 +132,9 @@ def _make_telegram_update(
         voice=None,
         audio=None,
         document=None,
+        video=None,
+        video_note=None,
+        animation=None,
         media_group_id=None,
         message_thread_id=None,
         message_id=1,
@@ -132,6 +144,7 @@ def _make_telegram_update(
 
 @pytest.mark.asyncio
 async def test_start_uses_request_proxy_without_builder_proxy(monkeypatch) -> None:
+    _FakeHTTPXRequest.instances.clear()
     config = TelegramConfig(
         enabled=True,
         token="123:abc",

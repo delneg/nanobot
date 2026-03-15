@@ -126,10 +126,11 @@ Reply directly with text for conversations. Only use the 'message' tool to send 
         media: list[str] | None = None,
         channel: str | None = None,
         chat_id: str | None = None,
+        model: str | None = None,
     ) -> list[dict[str, Any]]:
         """Build the complete message list for an LLM call."""
         runtime_ctx = self._build_runtime_context(channel, chat_id)
-        user_content = self._build_user_content(current_message, media)
+        user_content = self._build_user_content(current_message, media, model=model)
 
         # Merge runtime context and user content into a single user message
         # to avoid consecutive same-role messages that some providers reject.
@@ -147,9 +148,42 @@ Reply directly with text for conversations. Only use the 'message' tool to send 
     _MEDIA_PREFIXES = ("image/", "video/")
     _MAX_VIDEO_BYTES = 35 * 1024 * 1024  # 35 MB raw → ~47 MB base64, under 50 MB API buffer (DashScope limit)
 
-    def _build_user_content(self, text: str, media: list[str] | None) -> str | list[dict[str, Any]]:
+    # Model name patterns that indicate vision support (case-insensitive).
+    # Covers glm-4v, glm-4.6v, glm-4.6v-flash, qwen-vl, gpt-4-vision, gpt-4o, etc.
+    _VISION_MODEL_PATTERNS = ("4v", "vision", "-vl", "4o", "6v")
+
+    @classmethod
+    def _model_supports_vision(cls, model: str | None) -> bool:
+        """Check if the model supports vision (image/video) inputs."""
+        if not model:
+            return True  # Assume vision support when model is unknown
+        # Heuristic: check model name for common vision indicators
+        model_lower = model.lower()
+        if any(p in model_lower for p in cls._VISION_MODEL_PATTERNS):
+            return True
+        try:
+            from litellm import supports_vision
+            return supports_vision(model=model)
+        except Exception:
+            return True  # Default to allowing media on lookup failure
+
+    def _build_user_content(
+        self, text: str, media: list[str] | None, *, model: str | None = None,
+    ) -> str | list[dict[str, Any]]:
         """Build user message content with optional base64-encoded images/videos."""
         if not media:
+            return text
+
+        # For non-vision models, include media as text file-path references
+        if not self._model_supports_vision(model):
+            refs = []
+            for path in media:
+                p = Path(path)
+                if p.is_file():
+                    guessed_mime = mimetypes.guess_type(path)[0] or "unknown"
+                    refs.append(f"[media ({guessed_mime}): {path}]")
+            if refs:
+                return text + "\n" + "\n".join(refs)
             return text
 
         parts: list[dict[str, Any]] = []
