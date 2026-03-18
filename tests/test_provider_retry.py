@@ -123,3 +123,23 @@ async def test_chat_with_retry_explicit_override_beats_defaults() -> None:
     assert provider.last_kwargs["temperature"] == 0.9
     assert provider.last_kwargs["max_tokens"] == 9999
     assert provider.last_kwargs["reasoning_effort"] == "low"
+
+
+@pytest.mark.asyncio
+async def test_safe_chat_converts_exception_to_error_response() -> None:
+    """_safe_chat catches provider exceptions that escape chat()."""
+    provider = ScriptedProvider([RuntimeError("unexpected failure")])
+
+    response = await provider._safe_chat(messages=[{"role": "user", "content": "hello"}])
+
+    assert response.finish_reason == "error"
+    assert "unexpected failure" in response.content
+
+
+@pytest.mark.asyncio
+async def test_safe_chat_preserves_cancelled_error() -> None:
+    """_safe_chat must not swallow asyncio.CancelledError."""
+    provider = ScriptedProvider([asyncio.CancelledError()])
+
+    with pytest.raises(asyncio.CancelledError):
+        await provider._safe_chat(messages=[{"role": "user", "content": "hello"}])

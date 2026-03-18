@@ -193,6 +193,15 @@ class LLMProvider(ABC):
         err = (content or "").lower()
         return any(marker in err for marker in cls._TRANSIENT_ERROR_MARKERS)
 
+    async def _safe_chat(self, **kwargs: Any) -> LLMResponse:
+        """Call chat() and convert unexpected exceptions to error responses."""
+        try:
+            return await self.chat(**kwargs)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            return LLMResponse(content=f"Error calling LLM: {exc}", finish_reason="error")
+
     async def chat_with_retry(
         self,
         messages: list[dict[str, Any]],
@@ -223,12 +232,7 @@ class LLMProvider(ABC):
         )
 
         for attempt, delay in enumerate(self._CHAT_RETRY_DELAYS, start=1):
-            try:
-                response = await self.chat(**kw)
-            except asyncio.CancelledError:
-                raise
-            except Exception as exc:
-                response = LLMResponse(content=f"Error calling LLM: {exc}", finish_reason="error")
+            response = await self._safe_chat(**kw)
 
             if response.finish_reason != "error":
                 return response
@@ -243,12 +247,7 @@ class LLMProvider(ABC):
             )
             await asyncio.sleep(delay)
 
-        try:
-            return await self.chat(**kw)
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:
-            return LLMResponse(content=f"Error calling LLM: {exc}", finish_reason="error")
+        return await self._safe_chat(**kw)
 
     @abstractmethod
     def get_default_model(self) -> str:
