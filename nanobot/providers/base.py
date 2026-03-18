@@ -193,37 +193,6 @@ class LLMProvider(ABC):
         err = (content or "").lower()
         return any(marker in err for marker in cls._TRANSIENT_ERROR_MARKERS)
 
-    @staticmethod
-    def _strip_image_content(messages: list[dict[str, Any]]) -> list[dict[str, Any]] | None:
-        """Replace image_url blocks with text placeholder. Returns None if no images found."""
-        found = False
-        result = []
-        for msg in messages:
-            content = msg.get("content")
-            if isinstance(content, list):
-                new_content = []
-                for b in content:
-                    if isinstance(b, dict) and b.get("type") == "image_url":
-                        path = (b.get("_meta") or {}).get("path", "")
-                        placeholder = f"[image: {path}]" if path else "[image omitted]"
-                        new_content.append({"type": "text", "text": placeholder})
-                        found = True
-                    else:
-                        new_content.append(b)
-                result.append({**msg, "content": new_content})
-            else:
-                result.append(msg)
-        return result if found else None
-
-    async def _safe_chat(self, **kwargs: Any) -> LLMResponse:
-        """Call chat() and convert unexpected exceptions to error responses."""
-        try:
-            return await self.chat(**kwargs)
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:
-            return LLMResponse(content=f"Error calling LLM: {exc}", finish_reason="error")
-
     async def chat_with_retry(
         self,
         messages: list[dict[str, Any]],
@@ -254,16 +223,17 @@ class LLMProvider(ABC):
         )
 
         for attempt, delay in enumerate(self._CHAT_RETRY_DELAYS, start=1):
-            response = await self._safe_chat(**kw)
+            try:
+                response = await self.chat(**kw)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                response = LLMResponse(content=f"Error calling LLM: {exc}", finish_reason="error")
 
             if response.finish_reason != "error":
                 return response
 
             if not self._is_transient_error(response.content):
-                stripped = self._strip_image_content(messages)
-                if stripped is not None:
-                    logger.warning("Non-transient LLM error with image content, retrying without images")
-                    return await self._safe_chat(**{**kw, "messages": stripped})
                 return response
 
             logger.warning(
@@ -273,7 +243,12 @@ class LLMProvider(ABC):
             )
             await asyncio.sleep(delay)
 
-        return await self._safe_chat(**kw)
+        try:
+            return await self.chat(**kw)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            return LLMResponse(content=f"Error calling LLM: {exc}", finish_reason="error")
 
     @abstractmethod
     def get_default_model(self) -> str:

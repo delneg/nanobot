@@ -85,6 +85,30 @@ def test_save_turn_strips_video_base64_to_placeholder() -> None:
             "role": "user",
             "content": [
                 {"type": "text", "text": runtime},
+                {"type": "image_url", "image_url": {"url": "data:video/mp4;base64,AAAA"}, "_meta": {"path": "/media/clip.mp4"}},
+                {"type": "text", "text": "check this video"},
+            ],
+        }],
+        skip=0,
+    )
+    saved = session.messages[0]["content"]
+    assert saved == [
+        {"type": "text", "text": "[video: /media/clip.mp4]"},
+        {"type": "text", "text": "check this video"},
+    ]
+
+
+def test_save_turn_strips_video_base64_no_meta() -> None:
+    loop = _mk_loop()
+    session = Session(key="test:video-no-meta")
+    runtime = ContextBuilder._RUNTIME_CONTEXT_TAG + "\nCurrent Time: now (UTC)"
+
+    loop._save_turn(
+        session,
+        [{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": runtime},
                 {"type": "image_url", "image_url": {"url": "data:video/mp4;base64,AAAA"}},
                 {"type": "text", "text": "check this video"},
             ],
@@ -107,8 +131,8 @@ def test_save_turn_strips_mixed_image_and_video() -> None:
         [{
             "role": "user",
             "content": [
-                {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,/9j/"}},
-                {"type": "image_url", "image_url": {"url": "data:video/mp4;base64,AAAA"}},
+                {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,/9j/"}, "_meta": {"path": "/media/photo.jpg"}},
+                {"type": "image_url", "image_url": {"url": "data:video/mp4;base64,AAAA"}, "_meta": {"path": "/media/clip.mp4"}},
                 {"type": "text", "text": "describe both"},
             ],
         }],
@@ -116,7 +140,7 @@ def test_save_turn_strips_mixed_image_and_video() -> None:
     )
     saved = session.messages[0]["content"]
     assert saved == [
-        {"type": "text", "text": "[image]"},
-        {"type": "text", "text": "[video]"},
+        {"type": "text", "text": "[image: /media/photo.jpg]"},
+        {"type": "text", "text": "[video: /media/clip.mp4]"},
         {"type": "text", "text": "describe both"},
     ]
