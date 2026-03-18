@@ -16,6 +16,7 @@ from loguru import logger
 from nanobot.agent.context import ContextBuilder
 from nanobot.agent.memory import MemoryConsolidator
 from nanobot.agent.subagent import SubagentManager
+from nanobot.utils.helpers import estimate_prompt_tokens_chain
 from nanobot.agent.tools.cron import CronTool
 from nanobot.agent.skills import BUILTIN_SKILLS_DIR
 from nanobot.agent.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
@@ -179,6 +180,44 @@ class AgentLoop:
             return f'{tc.name}("{val[:40]}…")' if len(val) > 40 else f'{tc.name}("{val}")'
         return ", ".join(_fmt(tc) for tc in tool_calls)
 
+    @staticmethod
+    def _truncate_messages_for_budget(messages: list[dict]) -> list[dict]:
+        """
+        Truncate message history to fit within token budget.
+        Keeps system message (first) and most recent messages, drops middle history.
+        Ensures we don't start with orphaned tool results.
+        """
+        if not messages:
+            return messages
+
+        # Keep system message and last 6 messages as a safe minimum
+        # This preserves the immediate conversation context
+        keep_count = 6
+        if len(messages) <= keep_count + 1:  # +1 for potential system message
+            return messages
+
+        # Find first non-system message index
+        first_non_system = 0
+        for i, msg in enumerate(messages):
+            if msg.get("role") != "system":
+                first_non_system = i
+                break
+
+        # Keep system message (if any) + last keep_count messages
+        result = messages[:first_non_system] if first_non_system > 0 else []
+        result.extend(messages[-keep_count:])
+
+        # Ensure we don't start with orphaned tool results
+        # If first message after system is a tool, drop until we find a user message
+        start_idx = 1 if result and result[0].get("role") == "system" else 0
+        while start_idx < len(result) and result[start_idx].get("role") == "tool":
+            start_idx += 1
+
+        if start_idx > (1 if (result and result[0].get("role") == "system") else 0):
+            result = result[:1] + result[start_idx:] if result[0].get("role") == "system" else result[start_idx:]
+
+        return result
+
     async def _run_agent_loop(
         self,
         initial_messages: list[dict],
@@ -194,6 +233,19 @@ class AgentLoop:
             iteration += 1
 
             tool_defs = self.tools.get_definitions()
+
+            # Check token budget before LLM call to prevent "Prompt exceeds max length" errors
+            estimated, source = estimate_prompt_tokens_chain(
+                self.provider, self.model, messages, tool_defs
+            )
+            if estimated > self.context_window_tokens:
+                logger.warning(
+                    "Token budget exceeded: {}/{} via {}. Truncating message history.",
+                    estimated,
+                    self.context_window_tokens,
+                    source,
+                )
+                messages = self._truncate_messages_for_budget(messages)
 
             response = await self.provider.chat_with_retry(
                 messages=messages,
@@ -226,6 +278,9 @@ class AgentLoop:
                     args_str = json.dumps(tool_call.arguments, ensure_ascii=False)
                     logger.info("Tool call: {}({})", tool_call.name, args_str[:200])
                     result = await self.tools.execute(tool_call.name, tool_call.arguments)
+                    # Truncate large tool results to prevent exceeding context window
+                    if isinstance(result, str) and len(result) > self._TOOL_RESULT_MAX_CHARS:
+                        result = result[:self._TOOL_RESULT_MAX_CHARS] + "\n... (truncated)"
                     messages = self.context.add_tool_result(
                         messages, tool_call.id, tool_call.name, result
                     )
