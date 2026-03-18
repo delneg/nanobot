@@ -182,41 +182,18 @@ class AgentLoop:
 
     @staticmethod
     def _truncate_messages_for_budget(messages: list[dict]) -> list[dict]:
-        """
-        Truncate message history to fit within token budget.
-        Keeps system message (first) and most recent messages, drops middle history.
-        Ensures we don't start with orphaned tool results.
-        """
-        if not messages:
-            return messages
-
-        # Keep system message and last 6 messages as a safe minimum
-        # This preserves the immediate conversation context
+        """Emergency truncation: keep system prompt + last 6 messages, dropping orphaned tool results."""
         keep_count = 6
-        if len(messages) <= keep_count + 1:  # +1 for potential system message
+        if len(messages) <= keep_count + 1:
             return messages
 
-        # Find first non-system message index
-        first_non_system = 0
-        for i, msg in enumerate(messages):
-            if msg.get("role") != "system":
-                first_non_system = i
-                break
+        # Split off leading system message(s), keep tail
+        first_user_idx = next((i for i, m in enumerate(messages) if m.get("role") != "system"), 0)
+        tail = messages[-keep_count:]
 
-        # Keep system message (if any) + last keep_count messages
-        result = messages[:first_non_system] if first_non_system > 0 else []
-        result.extend(messages[-keep_count:])
-
-        # Ensure we don't start with orphaned tool results
-        # If first message after system is a tool, drop until we find a user message
-        start_idx = 1 if result and result[0].get("role") == "system" else 0
-        while start_idx < len(result) and result[start_idx].get("role") == "tool":
-            start_idx += 1
-
-        if start_idx > (1 if (result and result[0].get("role") == "system") else 0):
-            result = result[:1] + result[start_idx:] if result[0].get("role") == "system" else result[start_idx:]
-
-        return result
+        # Drop orphaned tool results from the start of the tail
+        tail_start = next((i for i, m in enumerate(tail) if m.get("role") != "tool"), len(tail))
+        return messages[:first_user_idx] + tail[tail_start:]
 
     async def _run_agent_loop(
         self,

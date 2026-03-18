@@ -239,6 +239,7 @@ class MemoryConsolidator:
         self.model = model
         self.sessions = sessions
         self.context_window_tokens = context_window_tokens
+        self._consolidation_threshold = int(context_window_tokens * 0.8)
         self._build_messages = build_messages
         self._get_tool_definitions = get_tool_definitions
         self._locks: weakref.WeakValueDictionary[str, asyncio.Lock] = weakref.WeakValueDictionary()
@@ -310,7 +311,7 @@ class MemoryConsolidator:
             estimated, source = self.estimate_session_prompt_tokens(session)
             if estimated <= 0:
                 return
-            if estimated < int(self.context_window_tokens * 0.8):
+            if estimated < self._consolidation_threshold:
                 logger.debug(
                     "Token consolidation idle {}: {}/{} via {}",
                     session.key,
