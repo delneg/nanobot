@@ -150,7 +150,7 @@ Reply directly with text for conversations. Only use the 'message' tool to send 
 
     # Model name patterns that indicate vision support (case-insensitive).
     # Covers glm-4v, glm-4.6v, glm-4.6v-flash, qwen-vl, gpt-4-vision, gpt-4o, etc.
-    _VISION_MODEL_PATTERNS = ("4v", "vision", "-vl", "4o", "6v")
+    _VISION_MODEL_PATTERNS = ("4v", "5v", "vision", "-vl", "4o", "6v")
 
     @classmethod
     def _model_supports_vision(cls, model: str | None) -> bool:
